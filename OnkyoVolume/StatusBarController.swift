@@ -181,8 +181,6 @@ class StatusBarController: NSObject, NSMenuDelegate {
     }
 
     private func queryAndUpdateVolume() async {
-        print("DEBUG: queryAndUpdateVolume() called")
-
         guard let ip = settingsManager.getReceiverIP() else {
             return
         }
@@ -192,9 +190,7 @@ class StatusBarController: NSObject, NSMenuDelegate {
         }
 
         do {
-            print("DEBUG: Starting volume query...")
             let volume = try await onkyoClient.queryVolume(from: ip)
-            print("DEBUG: Got volume: \(volume)")
             await MainActor.run {
                 isUpdatingSlider = true
                 volumeSlider?.doubleValue = Double(volume)
@@ -202,19 +198,15 @@ class StatusBarController: NSObject, NSMenuDelegate {
                 isUpdatingSlider = false
             }
         } catch {
-            // Show error for debugging
+            // Silent failure - just show "--"
             await MainActor.run {
-                volumeLabel?.stringValue = "Volume: Error"
-                showError("Volume query failed: \(error.localizedDescription)")
+                volumeLabel?.stringValue = "Volume: --"
             }
         }
     }
 
     private func setVolume(_ volume: Int) async {
         guard let ip = settingsManager.getReceiverIP() else {
-            await MainActor.run {
-                showError("No receiver IP configured. Please set an IP address.")
-            }
             return
         }
 
@@ -222,9 +214,8 @@ class StatusBarController: NSObject, NSMenuDelegate {
             try await onkyoClient.setVolume(volume, to: ip)
             // Silent success
         } catch {
-            await MainActor.run {
-                showError("Could not connect to receiver at \(ip). Please check the IP address and ensure the receiver is powered on.")
-            }
+            // Silent failure for setting too - receiver may be busy
+            // User can try moving slider again if needed
         }
     }
 

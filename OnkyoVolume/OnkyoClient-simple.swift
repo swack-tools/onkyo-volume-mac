@@ -74,18 +74,14 @@ class OnkyoClientSimple {
                             return
                         }
 
-                        print("DEBUG-SIMPLE: Got response: \(responseString.debugDescription)")
-
                         // Check if this matches what we want
                         if responseString.contains(expectingPrefix) {
-                            print("DEBUG-SIMPLE: Match found!")
                             if !resumed {
                                 resumed = true
                                 connection.cancel()
                                 continuation.resume(returning: responseString)
                             }
                         } else {
-                            print("DEBUG-SIMPLE: No match, reading next...")
                             readNextResponse() // RECURSIVE CALL
                         }
                     }
