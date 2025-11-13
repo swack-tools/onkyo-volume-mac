@@ -37,6 +37,14 @@ class OnkyoClientSimple {
         _ = try await sendCommand("MVL\(hexValue)", to: host, expectingPrefix: "MVL")
     }
 
+    func volumeUp(to host: String) async throws {
+        _ = try await sendCommand("MVLUP", to: host, expectingPrefix: "MVL")
+    }
+
+    func volumeDown(to host: String) async throws {
+        _ = try await sendCommand("MVLDOWN", to: host, expectingPrefix: "MVL")
+    }
+
     private func sendCommand(_ command: String, to host: String, expectingPrefix: String) async throws -> String {
         let packet = buildPacket(for: command)
 

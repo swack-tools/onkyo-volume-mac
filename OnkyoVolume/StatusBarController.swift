@@ -18,6 +18,7 @@ class StatusBarController: NSObject, NSMenuDelegate {
     private var volumeSlider: NSSlider?
     private var volumeLabel: NSTextField?
     private var isUpdatingSlider = false
+    private var globalKeyMonitor: Any?
 
     // MARK: - Initialization
 
@@ -31,6 +32,13 @@ class StatusBarController: NSObject, NSMenuDelegate {
 
         setupStatusItem()
         setupMenu()
+        setupGlobalKeyMonitor()
+    }
+
+    deinit {
+        if let monitor = globalKeyMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
     }
 
     // MARK: - Setup
@@ -120,6 +128,34 @@ class StatusBarController: NSObject, NSMenuDelegate {
         menu.addItem(quitItem)
 
         statusItem.menu = menu
+    }
+
+    private func setupGlobalKeyMonitor() {
+        // Monitor F11 (volume down) and F12 (volume up) globally
+        // Key codes: F11 = 103, F12 = 111
+        globalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self = self,
+                  let ip = self.settingsManager.getReceiverIP() else {
+                return
+            }
+
+            // F11 = volume down (key code 103)
+            // F12 = volume up (key code 111)
+            switch event.keyCode {
+            case 103: // F11 - Volume Down
+                Task {
+                    try? await self.onkyoClient.volumeDown(to: ip)
+                }
+
+            case 111: // F12 - Volume Up
+                Task {
+                    try? await self.onkyoClient.volumeUp(to: ip)
+                }
+
+            default:
+                break
+            }
+        }
     }
 
     // MARK: - NSMenuDelegate
