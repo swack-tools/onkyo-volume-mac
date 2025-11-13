@@ -160,14 +160,17 @@ class StatusBarController: NSObject, NSMenuDelegate {
             options: .defaultTap,  // Use default tap (requires full accessibility)
             eventsOfInterest: CGEventMask(eventMask),
             callback: { (proxy, type, event, refcon) -> Unmanaged<CGEvent>? in
+                // Get the StatusBarController instance
+                let controller = Unmanaged<StatusBarController>.fromOpaque(refcon!).takeUnretainedValue()
+
                 // Re-enable tap if it was disabled
                 if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
                     print("⚠️ Event tap was disabled, re-enabling...")
-                    CGEvent.tapEnable(tap: proxy, enable: true)
+                    if let tap = controller.eventTap {
+                        CGEvent.tapEnable(tap: tap, enable: true)
+                    }
                     return Unmanaged.passRetained(event)
                 }
-                // Get the StatusBarController instance
-                let controller = Unmanaged<StatusBarController>.fromOpaque(refcon!).takeUnretainedValue()
 
                 // Check if this is a system defined event (type 14)
                 if type.rawValue == 14 {
