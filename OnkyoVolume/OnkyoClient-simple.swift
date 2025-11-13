@@ -8,7 +8,7 @@ import Network
 
 class OnkyoClientSimple {
     private static let defaultPort: UInt16 = 60128
-    private static let connectionTimeout: TimeInterval = 10.0
+    private static let connectionTimeout: TimeInterval = 3.0 // Shorter timeout for GUI responsiveness
 
     func queryVolume(from host: String) async throws -> Int {
         let response = try await sendCommand("MVLQSTN", to: host, expectingPrefix: "MVL")
