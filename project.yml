@@ -1,0 +1,42 @@
+name: OnkyoVolume
+
+options:
+  bundleIdPrefix: com.swack-tools
+  deploymentTarget:
+    macOS: "13.0"
+  createIntermediateGroups: true
+
+settings:
+  PRODUCT_NAME: OnkyoVolume
+  MARKETING_VERSION: 1.0.0
+  CURRENT_PROJECT_VERSION: 1
+
+targets:
+  OnkyoVolume:
+    type: application
+    platform: macOS
+    sources:
+      - OnkyoVolume
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.swack-tools.onkyo-volume
+      INFOPLIST_FILE: OnkyoVolume/Info.plist
+      ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+      COMBINE_HIDPI_IMAGES: YES
+      ENABLE_HARDENED_RUNTIME: YES
+      MACOSX_DEPLOYMENT_TARGET: "13.0"
+      SWIFT_VERSION: "5.9"
+    info:
+      path: OnkyoVolume/Info.plist
+      properties:
+        CFBundleDevelopmentRegion: en
+        CFBundleExecutable: $(EXECUTABLE_NAME)
+        CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
+        CFBundleInfoDictionaryVersion: "6.0"
+        CFBundleName: $(PRODUCT_NAME)
+        CFBundlePackageType: APPL
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        LSUIElement: true
+        NSHumanReadableCopyright: ""
+        NSPrincipalClass: NSApplication
