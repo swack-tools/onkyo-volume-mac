@@ -75,7 +75,8 @@ class OnkyoClient {
     /// - Returns: The volume level (0-100)
     /// - Throws: OnkyoClientError if the query fails
     func queryVolume(from host: String) async throws -> Int {
-        let response = try await sendQueryCommand("MVLQSTN", to: host)
+        // Keep reading responses until we get one with "MVL"
+        let response = try await sendQueryCommand("MVLQSTN", to: host, expectingPrefix: "MVL")
 
         // Debug: Print raw response
         print("DEBUG: Raw volume response: \(response.debugDescription)")
@@ -183,8 +184,8 @@ class OnkyoClient {
         }
     }
 
-    /// Sends a query command and waits for a response
-    private func sendQueryCommand(_ command: String, to host: String) async throws -> String {
+    /// Sends a query command and waits for a response matching the expected prefix
+    private func sendQueryCommand(_ command: String, to host: String, expectingPrefix: String = "") async throws -> String {
         // Build the eISCP packet
         let packet = buildPacket(for: command)
 
@@ -199,6 +200,55 @@ class OnkyoClient {
         return try await withCheckedThrowingContinuation { continuation in
             let state = ResumedState()
 
+            // Recursive function to read responses until we find the right one
+            func readNextResponse() {
+                connection.receive(minimumIncompleteLength: 16, maximumLength: 16) { headerData, _, _, headerError in
+                    guard headerError == nil, let headerData = headerData, headerData.count == 16 else {
+                        connection.cancel()
+                        if !state.checkAndSet() {
+                            continuation.resume(throwing: OnkyoClientError.invalidResponse)
+                        }
+                        return
+                    }
+
+                    // Parse header to get data size
+                    let dataSizeBytes = headerData[8..<12]
+                    let dataSize = dataSizeBytes.withUnsafeBytes { $0.load(as: UInt32.self).bigEndian }
+
+                    // Read the message data
+                    connection.receive(minimumIncompleteLength: Int(dataSize), maximumLength: Int(dataSize)) { messageData, _, _, messageError in
+                        guard messageError == nil, let messageData = messageData else {
+                            connection.cancel()
+                            if !state.checkAndSet() {
+                                continuation.resume(throwing: OnkyoClientError.invalidResponse)
+                            }
+                            return
+                        }
+
+                        if let responseString = String(data: messageData, encoding: .utf8) {
+                            print("DEBUG: Received response: \(responseString.debugDescription)")
+
+                            // Check if this is the response we're looking for
+                            if expectingPrefix.isEmpty || responseString.contains(expectingPrefix) {
+                                connection.cancel()
+                                if !state.checkAndSet() {
+                                    continuation.resume(returning: responseString)
+                                }
+                            } else {
+                                // Not the response we want, keep reading
+                                print("DEBUG: Skipping unwanted response, reading next...")
+                                readNextResponse()
+                            }
+                        } else {
+                            connection.cancel()
+                            if !state.checkAndSet() {
+                                continuation.resume(throwing: OnkyoClientError.invalidResponse)
+                            }
+                        }
+                    }
+                }
+            }
+
             connection.stateUpdateHandler = { connectionState in
                 switch connectionState {
                 case .ready:
@@ -210,38 +260,8 @@ class OnkyoClient {
                                 continuation.resume(throwing: OnkyoClientError.connectionFailed)
                             }
                         } else {
-                            // Command sent, now read the eISCP response header (16 bytes)
-                            connection.receive(minimumIncompleteLength: 16, maximumLength: 16) { headerData, _, _, headerError in
-                                guard headerError == nil, let headerData = headerData, headerData.count == 16 else {
-                                    connection.cancel()
-                                    if !state.checkAndSet() {
-                                        continuation.resume(throwing: OnkyoClientError.invalidResponse)
-                                    }
-                                    return
-                                }
-
-                                // Parse header to get data size
-                                let dataSizeBytes = headerData[8..<12]
-                                let dataSize = dataSizeBytes.withUnsafeBytes { $0.load(as: UInt32.self).bigEndian }
-
-                                // Now read the message data
-                                connection.receive(minimumIncompleteLength: Int(dataSize), maximumLength: Int(dataSize)) { messageData, _, _, messageError in
-                                    connection.cancel()
-
-                                    if !state.checkAndSet() {
-                                        guard messageError == nil, let messageData = messageData else {
-                                            continuation.resume(throwing: OnkyoClientError.invalidResponse)
-                                            return
-                                        }
-
-                                        if let responseString = String(data: messageData, encoding: .utf8) {
-                                            continuation.resume(returning: responseString)
-                                        } else {
-                                            continuation.resume(throwing: OnkyoClientError.invalidResponse)
-                                        }
-                                    }
-                                }
-                            }
+                            // Command sent, start reading responses
+                            readNextResponse()
                         }
                     })
 
