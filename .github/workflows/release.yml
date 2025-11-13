@@ -27,6 +27,10 @@ jobs:
         run: |
           brew install xcodegen just create-dmg
 
+      - name: Run tests
+        run: |
+          just test
+
       - name: Build and package
         run: |
           just release v${{ steps.version.outputs.version }}
