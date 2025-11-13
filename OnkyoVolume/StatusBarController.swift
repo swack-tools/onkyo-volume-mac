@@ -151,7 +151,8 @@ class StatusBarController: NSObject, NSMenuDelegate {
         }
 
         // Create event tap for media keys
-        let eventMask = (1 << CGEventType.systemDefined.rawValue)
+        // NSSystemDefined = 14
+        let eventMask = (1 << 14)
 
         guard let eventTap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
@@ -162,8 +163,8 @@ class StatusBarController: NSObject, NSMenuDelegate {
                 // Get the StatusBarController instance
                 let controller = Unmanaged<StatusBarController>.fromOpaque(refcon!).takeUnretainedValue()
 
-                // Check if this is a media key event
-                if type == .systemDefined {
+                // Check if this is a system defined event (type 14)
+                if type.rawValue == 14 {
                     let nsEvent = NSEvent(cgEvent: event)
 
                     // Media keys are subtype 8 (NX_SUBTYPE_AUX_CONTROL_BUTTONS)
