@@ -1,0 +1,154 @@
+//
+//  OnkyoClient-simple.swift
+//  Simplified version using exact CLI test pattern
+//
+
+import Foundation
+import Network
+
+class OnkyoClientSimple {
+    private static let defaultPort: UInt16 = 60128
+    private static let connectionTimeout: TimeInterval = 10.0
+
+    func queryVolume(from host: String) async throws -> Int {
+        let response = try await sendCommand("MVLQSTN", to: host, expectingPrefix: "MVL")
+
+        // Parse MVL response
+        let cleaned = response.replacingOccurrences(of: "!1", with: "")
+            .replacingOccurrences(of: "\r", with: "")
+            .replacingOccurrences(of: "\n", with: "")
+            .trimmingCharacters(in: .whitespaces)
+
+        if cleaned.hasPrefix("MVL") {
+            let hexString = String(cleaned.dropFirst(3))
+            if let hexValue = Int(hexString, radix: 16) {
+                return min(hexValue, 100)
+            }
+        }
+        throw NSError(domain: "OnkyoClient", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response"])
+    }
+
+    func setVolume(_ volume: Int, to host: String) async throws {
+        let hexValue = String(format: "%02X", max(0, min(100, volume)))
+        _ = try await sendCommand("MVL\(hexValue)", to: host, expectingPrefix: "MVL")
+    }
+
+    private func sendCommand(_ command: String, to host: String, expectingPrefix: String) async throws -> String {
+        let packet = buildPacket(for: command)
+
+        return try await withCheckedThrowingContinuation { continuation in
+            var resumed = false
+            let queue = DispatchQueue(label: "onkyo.\(UUID().uuidString)")
+
+            let connection = NWConnection(
+                host: NWEndpoint.Host(host),
+                port: NWEndpoint.Port(integerLiteral: Self.defaultPort),
+                using: .tcp
+            )
+
+            // RECURSIVE read function - SAME as CLI test
+            func readNextResponse() {
+                // Read header
+                connection.receive(minimumIncompleteLength: 16, maximumLength: 16) { headerData, _, _, headerError in
+                    guard headerError == nil, let headerData = headerData, headerData.count == 16 else {
+                        if !resumed {
+                            resumed = true
+                            connection.cancel()
+                            continuation.resume(throwing: NSError(domain: "OnkyoClient", code: -1))
+                        }
+                        return
+                    }
+
+                    // Parse data size
+                    let dataSize = headerData[8..<12].withUnsafeBytes { $0.load(as: UInt32.self).bigEndian }
+
+                    // Read message
+                    connection.receive(minimumIncompleteLength: Int(dataSize), maximumLength: Int(dataSize)) { messageData, _, _, messageError in
+                        guard messageError == nil, let messageData = messageData,
+                              let responseString = String(data: messageData, encoding: .utf8) else {
+                            if !resumed {
+                                resumed = true
+                                connection.cancel()
+                                continuation.resume(throwing: NSError(domain: "OnkyoClient", code: -1))
+                            }
+                            return
+                        }
+
+                        print("DEBUG-SIMPLE: Got response: \(responseString.debugDescription)")
+
+                        // Check if this matches what we want
+                        if responseString.contains(expectingPrefix) {
+                            print("DEBUG-SIMPLE: Match found!")
+                            if !resumed {
+                                resumed = true
+                                connection.cancel()
+                                continuation.resume(returning: responseString)
+                            }
+                        } else {
+                            print("DEBUG-SIMPLE: No match, reading next...")
+                            readNextResponse() // RECURSIVE CALL
+                        }
+                    }
+                }
+            }
+
+            connection.stateUpdateHandler = { state in
+                switch state {
+                case .ready:
+                    connection.send(content: packet, completion: .contentProcessed { error in
+                        if error != nil {
+                            if !resumed {
+                                resumed = true
+                                connection.cancel()
+                                continuation.resume(throwing: NSError(domain: "OnkyoClient", code: -1))
+                            }
+                        } else {
+                            readNextResponse() // Start reading
+                        }
+                    })
+                case .failed(_), .waiting(_):
+                    if !resumed {
+                        resumed = true
+                        connection.cancel()
+                        continuation.resume(throwing: NSError(domain: "OnkyoClient", code: -1))
+                    }
+                default:
+                    break
+                }
+            }
+
+            connection.start(queue: queue)
+
+            // Timeout
+            queue.asyncAfter(deadline: .now() + Self.connectionTimeout) {
+                if !resumed {
+                    resumed = true
+                    connection.cancel()
+                    continuation.resume(throwing: NSError(domain: "OnkyoClient", code: -1))
+                }
+            }
+        }
+    }
+
+    private func buildPacket(for command: String) -> Data {
+        var packet = Data()
+        let message = "!1\(command)\r\n"
+        let messageData = message.data(using: .utf8)!
+        let dataSize = UInt32(messageData.count)
+        let headerSize: UInt32 = 16
+
+        packet.append(contentsOf: "ISCP".utf8)
+        packet.append(contentsOf: [
+            UInt8((headerSize >> 24) & 0xFF), UInt8((headerSize >> 16) & 0xFF),
+            UInt8((headerSize >> 8) & 0xFF), UInt8(headerSize & 0xFF)
+        ])
+        packet.append(contentsOf: [
+            UInt8((dataSize >> 24) & 0xFF), UInt8((dataSize >> 16) & 0xFF),
+            UInt8((dataSize >> 8) & 0xFF), UInt8(dataSize & 0xFF)
+        ])
+        packet.append(contentsOf: [0x01, 0x00, 0x00, 0x00])
+        packet.append(messageData)
+
+        return packet
+    }
+}

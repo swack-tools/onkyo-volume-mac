@@ -13,7 +13,7 @@ class StatusBarController: NSObject, NSMenuDelegate {
     // MARK: - Properties
 
     private let statusItem: NSStatusItem
-    private let onkyoClient: OnkyoClient
+    private let onkyoClient: OnkyoClientSimple
     private let settingsManager: SettingsManager
     private var volumeSlider: NSSlider?
     private var volumeLabel: NSTextField?
@@ -21,7 +21,7 @@ class StatusBarController: NSObject, NSMenuDelegate {
 
     // MARK: - Initialization
 
-    init(onkyoClient: OnkyoClient = OnkyoClient(),
+    init(onkyoClient: OnkyoClientSimple = OnkyoClientSimple(),
          settingsManager: SettingsManager = .shared) {
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         self.onkyoClient = onkyoClient
@@ -146,21 +146,19 @@ class StatusBarController: NSObject, NSMenuDelegate {
     }
 
     @objc private func volumeUp() {
-        Task {
-            await sendCommand(.volumeUp)
-            // After a brief delay, query the new volume to update the slider
-            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-            await queryAndUpdateVolume()
-        }
+        // Increment slider by 5
+        guard let slider = volumeSlider else { return }
+        let newVolume = min(100, Int(slider.doubleValue) + 5)
+        slider.doubleValue = Double(newVolume)
+        sliderChanged(slider)
     }
 
     @objc private func volumeDown() {
-        Task {
-            await sendCommand(.volumeDown)
-            // After a brief delay, query the new volume to update the slider
-            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-            await queryAndUpdateVolume()
-        }
+        // Decrement slider by 5
+        guard let slider = volumeSlider else { return }
+        let newVolume = max(0, Int(slider.doubleValue) - 5)
+        slider.doubleValue = Double(newVolume)
+        sliderChanged(slider)
     }
 
     @objc private func changeIP() {
@@ -172,24 +170,6 @@ class StatusBarController: NSObject, NSMenuDelegate {
     }
 
     // MARK: - Private Methods
-
-    private func sendCommand(_ command: OnkyoClient.Command) async {
-        guard let ip = settingsManager.getReceiverIP() else {
-            await MainActor.run {
-                showError("No receiver IP configured. Please set an IP address.")
-            }
-            return
-        }
-
-        do {
-            try await onkyoClient.sendCommand(command, to: ip)
-            // Silent success - no feedback needed
-        } catch {
-            await MainActor.run {
-                showError("Could not connect to receiver at \(ip). Please check the IP address and ensure the receiver is powered on.")
-            }
-        }
-    }
 
     private func showError(_ message: String) {
         let alert = NSAlert()
