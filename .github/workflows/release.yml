@@ -60,6 +60,32 @@ jobs:
         run: |
           just release v${{ steps.version.outputs.version }}
 
+      - name: Notarize app
+        env:
+          NOTARIZATION_APPLE_ID: ${{ secrets.NOTARIZATION_APPLE_ID }}
+          NOTARIZATION_PASSWORD: ${{ secrets.NOTARIZATION_PASSWORD }}
+          NOTARIZATION_TEAM_ID: ${{ secrets.NOTARIZATION_TEAM_ID }}
+        run: |
+          APP_PATH="./build/Build/Products/Release/OnkyoVolume.app"
+
+          echo "Creating archive for notarization..."
+          ditto -c -k --keepParent "$APP_PATH" "OnkyoVolume.zip"
+
+          echo "Submitting for notarization..."
+          xcrun notarytool submit OnkyoVolume.zip \
+            --apple-id "$NOTARIZATION_APPLE_ID" \
+            --password "$NOTARIZATION_PASSWORD" \
+            --team-id "$NOTARIZATION_TEAM_ID" \
+            --wait
+
+          echo "Stapling notarization ticket..."
+          xcrun stapler staple "$APP_PATH"
+
+          echo "Verifying notarization..."
+          xcrun stapler validate "$APP_PATH"
+
+          echo "✓ App notarized successfully"
+
       - name: Clean up keychain
         if: always()
         run: |
@@ -81,11 +107,17 @@ jobs:
             1. Download the DMG file below
             2. Open the DMG
             3. Drag OnkyoVolume.app to the Applications folder
-            4. On first launch, grant Accessibility permissions for F11/F12 shortcuts
+            4. Double-click to launch
+            5. Grant Accessibility permissions for F10/F11/F12 media keys
 
-            ### What's New
+            ### Features
 
-            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details.
+            - **F10**: Mute toggle
+            - **F11**: Volume down
+            - **F12**: Volume up
+            - Menu bar controls for volume and mute
+            - Persistent receiver IP configuration
+            - Version info display
 
             ### Requirements
 
@@ -94,9 +126,9 @@ jobs:
 
             ### Note
 
-            This app is not code-signed. On first launch:
-            1. Right-click the app and select "Open"
-            2. Click "Open" in the security dialog
-            3. Grant Accessibility permissions when prompted
+            This app is **signed and notarized** by Apple.
+            - Developer: SWACKTECH, LLC
+            - No security warnings on installation
+            - Safe to run directly
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
