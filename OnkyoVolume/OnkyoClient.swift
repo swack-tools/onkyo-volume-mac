@@ -185,6 +185,7 @@ class OnkyoClient {
     }
 
     /// Sends a query command and waits for a response matching the expected prefix
+    /// Reads up to 3 responses to handle receivers that send status updates first
     private func sendQueryCommand(_ command: String, to host: String, expectingPrefix: String = "") async throws -> String {
         // Build the eISCP packet
         let packet = buildPacket(for: command)
@@ -196,30 +197,12 @@ class OnkyoClient {
             using: .tcp
         )
 
-        // Set up state monitoring
-        return try await withCheckedThrowingContinuation { continuation in
-            let state = ResumedState()
-            var responseCount = 0
-            let maxResponses = 10 // Limit to prevent infinite loops
-
-            // Recursive function to read responses until we find the right one
-            func readNextResponse() {
-                responseCount += 1
-                if responseCount > maxResponses {
-                    connection.cancel()
-                    if !state.checkAndSet() {
-                        print("DEBUG: Max responses reached without finding expected response")
-                        continuation.resume(throwing: OnkyoClientError.invalidResponse)
-                    }
-                    return
-                }
-
+        // Helper to read one response
+        func readOneResponse() async throws -> String? {
+            return try await withCheckedThrowingContinuation { continuation in
                 connection.receive(minimumIncompleteLength: 16, maximumLength: 16) { headerData, _, _, headerError in
                     guard headerError == nil, let headerData = headerData, headerData.count == 16 else {
-                        connection.cancel()
-                        if !state.checkAndSet() {
-                            continuation.resume(throwing: OnkyoClientError.invalidResponse)
-                        }
+                        continuation.resume(throwing: OnkyoClientError.invalidResponse)
                         return
                     }
 
@@ -230,36 +213,24 @@ class OnkyoClient {
                     // Read the message data
                     connection.receive(minimumIncompleteLength: Int(dataSize), maximumLength: Int(dataSize)) { messageData, _, _, messageError in
                         guard messageError == nil, let messageData = messageData else {
-                            connection.cancel()
-                            if !state.checkAndSet() {
-                                continuation.resume(throwing: OnkyoClientError.invalidResponse)
-                            }
+                            continuation.resume(throwing: OnkyoClientError.invalidResponse)
                             return
                         }
 
                         if let responseString = String(data: messageData, encoding: .utf8) {
                             print("DEBUG: Received response: \(responseString.debugDescription)")
-
-                            // Check if this is the response we're looking for
-                            if expectingPrefix.isEmpty || responseString.contains(expectingPrefix) {
-                                connection.cancel()
-                                if !state.checkAndSet() {
-                                    continuation.resume(returning: responseString)
-                                }
-                            } else {
-                                // Not the response we want, keep reading
-                                print("DEBUG: Skipping unwanted response, reading next...")
-                                readNextResponse()
-                            }
+                            continuation.resume(returning: responseString)
                         } else {
-                            connection.cancel()
-                            if !state.checkAndSet() {
-                                continuation.resume(throwing: OnkyoClientError.invalidResponse)
-                            }
+                            continuation.resume(throwing: OnkyoClientError.invalidResponse)
                         }
                     }
                 }
             }
+        }
+
+        // Send command and read responses
+        return try await withCheckedThrowingContinuation { continuation in
+            let state = ResumedState()
 
             connection.stateUpdateHandler = { connectionState in
                 switch connectionState {
@@ -272,8 +243,34 @@ class OnkyoClient {
                                 continuation.resume(throwing: OnkyoClientError.connectionFailed)
                             }
                         } else {
-                            // Command sent, start reading responses
-                            readNextResponse()
+                            // Command sent, read up to 3 responses
+                            Task {
+                                do {
+                                    for i in 1...3 {
+                                        if let response = try await readOneResponse() {
+                                            if expectingPrefix.isEmpty || response.contains(expectingPrefix) {
+                                                connection.cancel()
+                                                if !state.checkAndSet() {
+                                                    continuation.resume(returning: response)
+                                                }
+                                                return
+                                            } else {
+                                                print("DEBUG: Response #\(i) doesn't match, reading next...")
+                                            }
+                                        }
+                                    }
+                                    // No matching response found
+                                    connection.cancel()
+                                    if !state.checkAndSet() {
+                                        continuation.resume(throwing: OnkyoClientError.invalidResponse)
+                                    }
+                                } catch {
+                                    connection.cancel()
+                                    if !state.checkAndSet() {
+                                        continuation.resume(throwing: error)
+                                    }
+                                }
+                            }
                         }
                     })
 
