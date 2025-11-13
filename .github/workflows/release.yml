@@ -80,18 +80,23 @@ jobs:
 
           echo "$SUBMISSION_OUTPUT"
 
-          # Extract submission ID
-          SUBMISSION_ID=$(echo "$SUBMISSION_OUTPUT" | grep -E "^\s+id:" | awk '{print $2}')
+          # Extract submission ID (first occurrence only, trim whitespace)
+          SUBMISSION_ID=$(echo "$SUBMISSION_OUTPUT" | grep -E "^\s+id:" | head -1 | awk '{print $2}' | tr -d '[:space:]')
+
+          echo "Extracted submission ID: $SUBMISSION_ID"
 
           # Check if submission was accepted
           if echo "$SUBMISSION_OUTPUT" | grep -q "status: Accepted"; then
             echo "✓ Notarization accepted"
           else
             echo "❌ Notarization failed, fetching log..."
-            xcrun notarytool log "$SUBMISSION_ID" \
+            xcrun notarytool log "$SUBMISSION_ID" developer_log.json \
               --apple-id "$NOTARIZATION_APPLE_ID" \
               --password "$NOTARIZATION_PASSWORD" \
               --team-id "$NOTARIZATION_TEAM_ID"
+
+            echo "Notarization error details:"
+            cat developer_log.json
             exit 1
           fi
 
