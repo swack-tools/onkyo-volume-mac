@@ -206,12 +206,12 @@ class StatusBarController: NSObject, NSMenuDelegate {
 
         self.eventTap = eventTap
 
-        // Add to run loop
+        // Add to main run loop
         let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
-        CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
+        CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
         CGEvent.tapEnable(tap: eventTap, enable: true)
 
-        print("✓ Media key monitoring enabled")
+        print("✓ Media key monitoring enabled (on main run loop)")
     }
 
     private func handleVolumeDown() {
