@@ -249,12 +249,6 @@ class OnkyoClient {
                                 do {
                                     for i in 1...5 {
                                         print("DEBUG: Loop iteration #\(i)")
-                                        // Small delay to let receiver send next response
-                                        if i > 1 {
-                                            print("DEBUG: Waiting 0.1s before next read...")
-                                            try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
-                                        }
-
                                         print("DEBUG: Calling readOneResponse()...")
                                         if let response = try await readOneResponse() {
                                             print("DEBUG: Got response in iteration #\(i)")
