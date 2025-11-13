@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import CoreGraphics
 
 /// Manages the status bar item and menu
 class StatusBarController: NSObject, NSMenuDelegate {
@@ -20,6 +21,7 @@ class StatusBarController: NSObject, NSMenuDelegate {
     private var isUpdatingSlider = false
     private var globalKeyMonitor: Any?
     private var localKeyMonitor: Any?
+    private var eventTap: CFMachPort?
 
     // MARK: - Initialization
 
@@ -33,7 +35,7 @@ class StatusBarController: NSObject, NSMenuDelegate {
 
         setupStatusItem()
         setupMenu()
-        setupGlobalKeyMonitor()
+        setupMediaKeyMonitoring()
     }
 
     deinit {
@@ -42,6 +44,10 @@ class StatusBarController: NSObject, NSMenuDelegate {
         }
         if let monitor = localKeyMonitor {
             NSEvent.removeMonitor(monitor)
+        }
+        if let tap = eventTap {
+            CGEvent.tapEnable(tap: tap, enable: false)
+            CFMachPortInvalidate(tap)
         }
     }
 
@@ -134,48 +140,92 @@ class StatusBarController: NSObject, NSMenuDelegate {
         statusItem.menu = menu
     }
 
-    private func setupGlobalKeyMonitor() {
-        // Handler for volume key presses
-        let handleVolumeKey: (NSEvent) -> Void = { [weak self] event in
-            guard let self = self,
-                  let ip = self.settingsManager.getReceiverIP() else {
-                return
-            }
+    private func setupMediaKeyMonitoring() {
+        // Check for accessibility permissions
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
+        let accessEnabled = AXIsProcessTrustedWithOptions(options as CFDictionary)
 
-            // Debug: Print all F-key presses to help identify correct codes
-            if event.keyCode >= 96 && event.keyCode <= 111 {
-                print("DEBUG: F-key pressed with code: \(event.keyCode)")
-            }
-
-            // F11 = volume down (key code 103)
-            // F12 = volume up (key code 111)
-            switch event.keyCode {
-            case 103: // F11 - Volume Down
-                print("DEBUG: F11 detected - sending volume down")
-                Task {
-                    try? await self.onkyoClient.volumeDown(to: ip)
-                }
-
-            case 111: // F12 - Volume Up
-                print("DEBUG: F12 detected - sending volume up")
-                Task {
-                    try? await self.onkyoClient.volumeUp(to: ip)
-                }
-
-            default:
-                break
-            }
+        if !accessEnabled {
+            print("⚠️ Accessibility permissions needed for media key control")
+            print("   Grant permissions in System Settings > Privacy & Security > Accessibility")
         }
 
-        // Global monitor (for when other apps are focused)
-        globalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { event in
-            handleVolumeKey(event)
+        // Create event tap for media keys
+        let eventMask = (1 << CGEventType.systemDefined.rawValue)
+
+        guard let eventTap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: CGEventMask(eventMask),
+            callback: { (proxy, type, event, refcon) -> Unmanaged<CGEvent>? in
+                // Get the StatusBarController instance
+                let controller = Unmanaged<StatusBarController>.fromOpaque(refcon!).takeUnretainedValue()
+
+                // Check if this is a media key event
+                if type == .systemDefined {
+                    let nsEvent = NSEvent(cgEvent: event)
+
+                    // Media keys are subtype 8 (NX_SUBTYPE_AUX_CONTROL_BUTTONS)
+                    if nsEvent?.subtype == .screenChanged {
+                        let data = nsEvent?.data1 ?? 0
+                        let keyCode = ((data & 0xFFFF0000) >> 16)
+                        let keyFlags = (data & 0x0000FFFF)
+                        let keyPressed = ((keyFlags & 0xFF00) >> 8) == 0xA
+
+                        print("DEBUG: Media key - code: \(keyCode), pressed: \(keyPressed)")
+
+                        // Only handle key down events
+                        if keyPressed {
+                            switch keyCode {
+                            case 7: // Volume Down (F11)
+                                print("DEBUG: Volume Down detected")
+                                controller.handleVolumeDown()
+                                // Return nil to consume the event (prevent system volume change)
+                                // Or return event to allow both
+                                return Unmanaged.passRetained(event)
+
+                            case 6: // Volume Up (F12)
+                                print("DEBUG: Volume Up detected")
+                                controller.handleVolumeUp()
+                                return Unmanaged.passRetained(event)
+
+                            default:
+                                break
+                            }
+                        }
+                    }
+                }
+
+                return Unmanaged.passRetained(event)
+            },
+            userInfo: Unmanaged.passUnretained(self).toOpaque()
+        ) else {
+            print("❌ Failed to create event tap")
+            return
         }
 
-        // Local monitor (for when this app is focused)
-        localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            handleVolumeKey(event)
-            return event // Pass event through
+        self.eventTap = eventTap
+
+        // Add to run loop
+        let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
+        CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
+        CGEvent.tapEnable(tap: eventTap, enable: true)
+
+        print("✓ Media key monitoring enabled")
+    }
+
+    private func handleVolumeDown() {
+        guard let ip = settingsManager.getReceiverIP() else { return }
+        Task {
+            try? await onkyoClient.volumeDown(to: ip)
+        }
+    }
+
+    private func handleVolumeUp() {
+        guard let ip = settingsManager.getReceiverIP() else { return }
+        Task {
+            try? await onkyoClient.volumeUp(to: ip)
         }
     }
 
