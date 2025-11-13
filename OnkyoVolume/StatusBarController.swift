@@ -189,28 +189,19 @@ class StatusBarController: NSObject, NSMenuDelegate {
             volumeLabel?.stringValue = "Volume: ..."
         }
 
-        // Try twice - first query often times out on first menu open
-        for attempt in 1...2 {
-            do {
-                let volume = try await onkyoClient.queryVolume(from: ip)
-                await MainActor.run {
-                    isUpdatingSlider = true
-                    volumeSlider?.doubleValue = Double(volume)
-                    volumeLabel?.stringValue = "Volume: \(volume)"
-                    isUpdatingSlider = false
-                }
-                return // Success!
-            } catch {
-                print("Volume query attempt \(attempt) failed: \(error)")
-                if attempt == 1 {
-                    // First attempt failed, try once more
-                    try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s delay
-                } else {
-                    // Both attempts failed - show "--"
-                    await MainActor.run {
-                        volumeLabel?.stringValue = "Volume: --"
-                    }
-                }
+        do {
+            let volume = try await onkyoClient.queryVolume(from: ip)
+            await MainActor.run {
+                isUpdatingSlider = true
+                volumeSlider?.doubleValue = Double(volume)
+                volumeLabel?.stringValue = "Volume: \(volume)"
+                isUpdatingSlider = false
+            }
+        } catch {
+            // Query failed - show "--"
+            // User can close/reopen menu to retry
+            await MainActor.run {
+                volumeLabel?.stringValue = "Volume: --"
             }
         }
     }
