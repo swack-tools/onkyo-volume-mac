@@ -49,7 +49,7 @@ class OnkyoClient {
     // MARK: - Constants
 
     private static let defaultPort: UInt16 = 60128
-    private static let connectionTimeout: TimeInterval = 5.0
+    private static let connectionTimeout: TimeInterval = 10.0 // Increased for multiple responses
 
     // MARK: - Commands
 
@@ -199,9 +199,21 @@ class OnkyoClient {
         // Set up state monitoring
         return try await withCheckedThrowingContinuation { continuation in
             let state = ResumedState()
+            var responseCount = 0
+            let maxResponses = 10 // Limit to prevent infinite loops
 
             // Recursive function to read responses until we find the right one
             func readNextResponse() {
+                responseCount += 1
+                if responseCount > maxResponses {
+                    connection.cancel()
+                    if !state.checkAndSet() {
+                        print("DEBUG: Max responses reached without finding expected response")
+                        continuation.resume(throwing: OnkyoClientError.invalidResponse)
+                    }
+                    return
+                }
+
                 connection.receive(minimumIncompleteLength: 16, maximumLength: 16) { headerData, _, _, headerError in
                     guard headerError == nil, let headerData = headerData, headerData.count == 16 else {
                         connection.cancel()
