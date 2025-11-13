@@ -7,6 +7,7 @@
 
 import AppKit
 import CoreGraphics
+import ServiceManagement
 
 /// Manages the status bar item and menu
 class StatusBarController: NSObject, NSMenuDelegate {
@@ -134,6 +135,15 @@ class StatusBarController: NSObject, NSMenuDelegate {
         )
         changeIPItem.target = self
         menu.addItem(changeIPItem)
+
+        // Launch at Login
+        let launchAtLoginItem = NSMenuItem(
+            title: "Launch at Login",
+            action: #selector(toggleLaunchAtLogin),
+            keyEquivalent: ""
+        )
+        launchAtLoginItem.target = self
+        menu.addItem(launchAtLoginItem)
 
         // Separator
         menu.addItem(NSMenuItem.separator())
@@ -291,6 +301,11 @@ class StatusBarController: NSObject, NSMenuDelegate {
         Task {
             await queryAndUpdateVolume()
         }
+
+        // Update Launch at Login checkmark
+        if let launchItem = menu.items.first(where: { $0.title == "Launch at Login" }) {
+            launchItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
+        }
     }
 
     // MARK: - Actions
@@ -331,6 +346,27 @@ class StatusBarController: NSObject, NSMenuDelegate {
 
     @objc private func changeIP() {
         showIPDialog()
+    }
+
+    @objc private func toggleLaunchAtLogin(_ sender: NSMenuItem) {
+        let isCurrentlyEnabled = SMAppService.mainApp.status == .enabled
+
+        do {
+            if isCurrentlyEnabled {
+                try SMAppService.mainApp.unregister()
+                sender.state = .off
+            } else {
+                try SMAppService.mainApp.register()
+                sender.state = .on
+            }
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = "Launch at Login Error"
+            alert.informativeText = "Could not change launch at login setting: \(error.localizedDescription)"
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+        }
     }
 
     @objc private func quit() {
