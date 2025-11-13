@@ -179,15 +179,13 @@ class StatusBarController: NSObject, NSMenuDelegate {
                         // Only handle key down events
                         if keyPressed {
                             switch keyCode {
-                            case 7: // Volume Down (F11)
-                                print("DEBUG: Volume Down detected")
+                            case 0: // Volume Down (F11)
+                                print("DEBUG: Volume Down detected - sending to receiver")
                                 controller.handleVolumeDown()
-                                // Return nil to consume the event (prevent system volume change)
-                                // Or return event to allow both
                                 return Unmanaged.passRetained(event)
 
-                            case 6: // Volume Up (F12)
-                                print("DEBUG: Volume Up detected")
+                            case 1: // Volume Up (F12)
+                                print("DEBUG: Volume Up detected - sending to receiver")
                                 controller.handleVolumeUp()
                                 return Unmanaged.passRetained(event)
 
