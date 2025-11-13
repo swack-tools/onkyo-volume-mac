@@ -189,7 +189,7 @@ class StatusBarController: NSObject, NSMenuDelegate {
         guard let eventTap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
-            options: .listenOnly,  // Listen-only mode works better for background menu apps
+            options: .defaultTap,  // Use default tap for global monitoring
             eventsOfInterest: CGEventMask(eventMask),
             callback: { (proxy, type, event, refcon) -> Unmanaged<CGEvent>? in
                 // Get the StatusBarController instance
