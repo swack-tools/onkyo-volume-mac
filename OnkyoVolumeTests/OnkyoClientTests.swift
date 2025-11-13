@@ -6,7 +6,6 @@
 //
 
 import XCTest
-@testable import OnkyoVolume
 
 final class OnkyoClientTests: XCTestCase {
 

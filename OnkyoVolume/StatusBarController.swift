@@ -128,6 +128,27 @@ class StatusBarController: NSObject, NSMenuDelegate {
         // Separator
         menu.addItem(NSMenuItem.separator())
 
+        // Version and Build Info
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
+
+        #if DEBUG
+        let buildConfig = "Debug"
+        #else
+        let buildConfig = "Release"
+        #endif
+
+        let versionItem = NSMenuItem(
+            title: "v\(version) (\(build)) - \(buildConfig)",
+            action: nil,
+            keyEquivalent: ""
+        )
+        versionItem.isEnabled = false
+        menu.addItem(versionItem)
+
+        // Separator
+        menu.addItem(NSMenuItem.separator())
+
         // Quit
         let quitItem = NSMenuItem(
             title: "Quit",
@@ -141,13 +162,14 @@ class StatusBarController: NSObject, NSMenuDelegate {
     }
 
     private func setupMediaKeyMonitoring() {
-        // Check for accessibility permissions
+        // Check for accessibility permissions (still needed for media keys)
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
         let accessEnabled = AXIsProcessTrustedWithOptions(options as CFDictionary)
 
         if !accessEnabled {
             print("⚠️ Accessibility permissions needed for media key control")
             print("   Grant permissions in System Settings > Privacy & Security > Accessibility")
+            print("   App will retry after permissions are granted")
         }
 
         // Create event tap for media keys
@@ -157,7 +179,7 @@ class StatusBarController: NSObject, NSMenuDelegate {
         guard let eventTap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
-            options: .defaultTap,  // Use default tap (requires full accessibility)
+            options: .listenOnly,  // Listen-only mode works better for background menu apps
             eventsOfInterest: CGEventMask(eventMask),
             callback: { (proxy, type, event, refcon) -> Unmanaged<CGEvent>? in
                 // Get the StatusBarController instance
@@ -183,20 +205,16 @@ class StatusBarController: NSObject, NSMenuDelegate {
                         let keyFlags = (data & 0x0000FFFF)
                         let keyPressed = ((keyFlags & 0xFF00) >> 8) == 0xA
 
-                        print("DEBUG: Media key - code: \(keyCode), pressed: \(keyPressed)")
-
                         // Only handle key down events
                         if keyPressed {
                             switch keyCode {
                             case 1: // F11 - Volume Down
-                                print("DEBUG: F11 (Volume Down) - sending to receiver")
+                                print("✓ F11 (Volume Down) detected")
                                 controller.handleVolumeDown()
-                                return Unmanaged.passRetained(event)
 
                             case 0: // F12 - Volume Up
-                                print("DEBUG: F12 (Volume Up) - sending to receiver")
+                                print("✓ F12 (Volume Up) detected")
                                 controller.handleVolumeUp()
-                                return Unmanaged.passRetained(event)
 
                             default:
                                 break
@@ -205,22 +223,25 @@ class StatusBarController: NSObject, NSMenuDelegate {
                     }
                 }
 
+                // Always pass through the event (listenOnly mode)
                 return Unmanaged.passRetained(event)
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
             print("❌ Failed to create event tap")
+            print("   Make sure accessibility permissions are granted")
+            print("   System Settings > Privacy & Security > Accessibility")
             return
         }
 
         self.eventTap = eventTap
 
-        // Add to main run loop
+        // Add to main run loop with common modes so it works when menu is open
         let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
         CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
         CGEvent.tapEnable(tap: eventTap, enable: true)
 
-        print("✓ Media key monitoring enabled (on main run loop)")
+        print("✓ Media key monitoring enabled (F11/F12)")
     }
 
     private func handleVolumeDown() {

@@ -42,13 +42,25 @@ class SettingsManager {
         userDefaults.set(ip, forKey: Keys.receiverIPAddress)
     }
 
-    /// Validates an IP address format
+    /// Validates an IPv4 address format (strict, no whitespace; each octet 0-255)
     /// - Parameter ip: The IP address string to validate
     /// - Returns: True if the format is valid
     static func isValidIPAddress(_ ip: String) -> Bool {
-        let pattern = "^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$"
-        let regex = try? NSRegularExpression(pattern: pattern)
-        let range = NSRange(location: 0, length: ip.utf16.count)
-        return regex?.firstMatch(in: ip, range: range) != nil
+        // Reject any whitespace
+        if ip.rangeOfCharacter(from: .whitespacesAndNewlines) != nil { return false }
+
+        // Split into exactly 4 octets, preserving empties to catch leading/trailing dots
+        let parts = ip.split(separator: ".", omittingEmptySubsequences: false)
+        if parts.count != 4 { return false }
+
+        for part in parts {
+            // Non-empty, max 3 digits
+            if part.isEmpty || part.count > 3 { return false }
+            // All characters must be digits 0-9
+            if part.contains(where: { $0 < "0" || $0 > "9" }) { return false }
+            // Convert and range-check 0...255
+            guard let value = Int(part), (0...255).contains(value) else { return false }
+        }
+        return true
     }
 }

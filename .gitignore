@@ -31,3 +31,7 @@ Build/
 
 # XcodeGen
 # project.yml is tracked, but generated .xcodeproj is not
+
+
+#Ignore vscode AI rules
+.github/instructions/codacy.instructions.md
