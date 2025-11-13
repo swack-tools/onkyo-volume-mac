@@ -8,13 +8,16 @@
 import AppKit
 
 /// Manages the status bar item and menu
-class StatusBarController {
+class StatusBarController: NSObject, NSMenuDelegate {
 
     // MARK: - Properties
 
     private let statusItem: NSStatusItem
     private let onkyoClient: OnkyoClient
     private let settingsManager: SettingsManager
+    private var volumeSlider: NSSlider?
+    private var volumeLabel: NSTextField?
+    private var isUpdatingSlider = false
 
     // MARK: - Initialization
 
@@ -23,6 +26,8 @@ class StatusBarController {
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         self.onkyoClient = onkyoClient
         self.settingsManager = settingsManager
+
+        super.init()
 
         setupStatusItem()
         setupMenu()
@@ -40,6 +45,37 @@ class StatusBarController {
 
     private func setupMenu() {
         let menu = NSMenu()
+        menu.delegate = self
+
+        // Volume Slider Container
+        let sliderView = NSView(frame: NSRect(x: 0, y: 0, width: 200, height: 60))
+
+        // Volume Label
+        let label = NSTextField(frame: NSRect(x: 10, y: 35, width: 180, height: 20))
+        label.stringValue = "Volume: --"
+        label.isEditable = false
+        label.isBordered = false
+        label.backgroundColor = .clear
+        label.alignment = .center
+        sliderView.addSubview(label)
+        self.volumeLabel = label
+
+        // Volume Slider
+        let slider = NSSlider(frame: NSRect(x: 10, y: 10, width: 180, height: 20))
+        slider.minValue = 0
+        slider.maxValue = 100
+        slider.doubleValue = 50
+        slider.target = self
+        slider.action = #selector(sliderChanged(_:))
+        sliderView.addSubview(slider)
+        self.volumeSlider = slider
+
+        let sliderItem = NSMenuItem()
+        sliderItem.view = sliderView
+        menu.addItem(sliderItem)
+
+        // Separator
+        menu.addItem(NSMenuItem.separator())
 
         // Volume Up
         let volumeUpItem = NSMenuItem(
@@ -86,17 +122,44 @@ class StatusBarController {
         statusItem.menu = menu
     }
 
+    // MARK: - NSMenuDelegate
+
+    func menuWillOpen(_ menu: NSMenu) {
+        // Query current volume when menu opens
+        Task {
+            await queryAndUpdateVolume()
+        }
+    }
+
     // MARK: - Actions
+
+    @objc private func sliderChanged(_ sender: NSSlider) {
+        guard !isUpdatingSlider else { return }
+
+        let volume = Int(sender.doubleValue)
+        volumeLabel?.stringValue = "Volume: \(volume)"
+
+        // Send volume change to receiver
+        Task {
+            await setVolume(volume)
+        }
+    }
 
     @objc private func volumeUp() {
         Task {
             await sendCommand(.volumeUp)
+            // After a brief delay, query the new volume to update the slider
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+            await queryAndUpdateVolume()
         }
     }
 
     @objc private func volumeDown() {
         Task {
             await sendCommand(.volumeDown)
+            // After a brief delay, query the new volume to update the slider
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+            await queryAndUpdateVolume()
         }
     }
 
@@ -135,6 +198,45 @@ class StatusBarController {
         alert.alertStyle = .warning
         alert.addButton(withTitle: "OK")
         alert.runModal()
+    }
+
+    private func queryAndUpdateVolume() async {
+        guard let ip = settingsManager.getReceiverIP() else {
+            return
+        }
+
+        do {
+            let volume = try await onkyoClient.queryVolume(from: ip)
+            await MainActor.run {
+                isUpdatingSlider = true
+                volumeSlider?.doubleValue = Double(volume)
+                volumeLabel?.stringValue = "Volume: \(volume)"
+                isUpdatingSlider = false
+            }
+        } catch {
+            // Silent failure for volume query
+            await MainActor.run {
+                volumeLabel?.stringValue = "Volume: --"
+            }
+        }
+    }
+
+    private func setVolume(_ volume: Int) async {
+        guard let ip = settingsManager.getReceiverIP() else {
+            await MainActor.run {
+                showError("No receiver IP configured. Please set an IP address.")
+            }
+            return
+        }
+
+        do {
+            try await onkyoClient.setVolume(volume, to: ip)
+            // Silent success
+        } catch {
+            await MainActor.run {
+                showError("Could not connect to receiver at \(ip). Please check the IP address and ensure the receiver is powered on.")
+            }
+        }
     }
 
     func showIPDialog(isFirstLaunch: Bool = false) {

@@ -56,6 +56,7 @@ class OnkyoClient {
     enum Command: String {
         case volumeUp = "MVLUP"
         case volumeDown = "MVLDOWN"
+        case volumeQuery = "MVLQSTN"
     }
 
     // MARK: - Public Methods
@@ -67,6 +68,42 @@ class OnkyoClient {
     /// - Throws: OnkyoClientError if the connection or send fails
     func sendCommand(_ command: Command, to host: String) async throws {
         try await sendRawCommand(command.rawValue, to: host)
+    }
+
+    /// Queries the current volume level from the receiver
+    /// - Parameter host: The receiver's IP address
+    /// - Returns: The volume level (0-100)
+    /// - Throws: OnkyoClientError if the query fails
+    func queryVolume(from host: String) async throws -> Int {
+        let response = try await sendQueryCommand("MVLQSTN", to: host)
+        // Response format: "!1MVL{hex}\r\n" or "MVL{hex}"
+        let cleaned = response.replacingOccurrences(of: "!1", with: "")
+            .replacingOccurrences(of: "\r", with: "")
+            .replacingOccurrences(of: "\n", with: "")
+            .trimmingCharacters(in: .whitespaces)
+
+        // Extract hex value after "MVL"
+        if cleaned.hasPrefix("MVL") {
+            let hexString = String(cleaned.dropFirst(3))
+            if let hexValue = Int(hexString, radix: 16) {
+                // Onkyo receivers typically use 0x00-0x64 (0-100 decimal)
+                // Some models use 0x00-0x50 (0-80 decimal)
+                // We'll map to 0-100 range
+                return min(hexValue, 100)
+            }
+        }
+        throw OnkyoClientError.invalidResponse
+    }
+
+    /// Sets the receiver volume to an absolute level
+    /// - Parameters:
+    ///   - volume: The volume level (0-100)
+    ///   - host: The receiver's IP address
+    /// - Throws: OnkyoClientError if the command fails
+    func setVolume(_ volume: Int, to host: String) async throws {
+        let clampedVolume = max(0, min(100, volume))
+        let hexValue = String(format: "%02X", clampedVolume)
+        try await sendRawCommand("MVL\(hexValue)", to: host)
     }
 
     // MARK: - Private Methods
@@ -113,6 +150,84 @@ class OnkyoClient {
 
                 case .waiting(_):
                     // Network is unavailable
+                    connection.cancel()
+                    if !state.checkAndSet() {
+                        continuation.resume(throwing: OnkyoClientError.connectionFailed)
+                    }
+
+                default:
+                    break
+                }
+            }
+
+            // Start the connection
+            connection.start(queue: .global())
+
+            // Set up timeout
+            DispatchQueue.global().asyncAfter(deadline: .now() + Self.connectionTimeout) {
+                if !state.checkAndSet() {
+                    connection.cancel()
+                    continuation.resume(throwing: OnkyoClientError.timeout)
+                }
+            }
+        }
+    }
+
+    /// Sends a query command and waits for a response
+    private func sendQueryCommand(_ command: String, to host: String) async throws -> String {
+        // Build the eISCP packet
+        let packet = buildPacket(for: command)
+
+        // Create connection
+        let connection = NWConnection(
+            host: NWEndpoint.Host(host),
+            port: NWEndpoint.Port(integerLiteral: Self.defaultPort),
+            using: .tcp
+        )
+
+        // Set up state monitoring
+        return try await withCheckedThrowingContinuation { continuation in
+            let state = ResumedState()
+            var receivedData = Data()
+
+            connection.stateUpdateHandler = { connectionState in
+                switch connectionState {
+                case .ready:
+                    // Connection established, send the packet
+                    connection.send(content: packet, completion: .contentProcessed { error in
+                        if error != nil {
+                            if !state.checkAndSet() {
+                                connection.cancel()
+                                continuation.resume(throwing: OnkyoClientError.connectionFailed)
+                            }
+                        } else {
+                            // Command sent, now wait for response
+                            connection.receive(minimumIncompleteLength: 1, maximumLength: 1024) { data, _, isComplete, error in
+                                if let data = data {
+                                    receivedData.append(data)
+                                }
+
+                                if isComplete || error != nil {
+                                    connection.cancel()
+                                    if !state.checkAndSet() {
+                                        if let responseString = String(data: receivedData, encoding: .utf8) {
+                                            continuation.resume(returning: responseString)
+                                        } else {
+                                            continuation.resume(throwing: OnkyoClientError.invalidResponse)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    })
+
+                case .failed(_):
+                    connection.cancel()
+                    if !state.checkAndSet() {
+                        continuation.resume(throwing: OnkyoClientError.connectionFailed)
+                    }
+
+                case .waiting(_):
                     connection.cancel()
                     if !state.checkAndSet() {
                         continuation.resume(throwing: OnkyoClientError.connectionFailed)
