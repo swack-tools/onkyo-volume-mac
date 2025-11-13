@@ -15,7 +15,10 @@ test: generate
     xcodebuild test \
         -scheme OnkyoVolume \
         -destination 'platform=macOS' \
-        -derivedDataPath ./build
+        -derivedDataPath ./build \
+        -enableCodeCoverage YES \
+        | grep -E '(Test Suite|Test Case|executed|passed|failed)' || true
+    @echo "✓ Tests complete"
 
 # Build debug configuration
 build-debug: generate

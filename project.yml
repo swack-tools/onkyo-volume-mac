@@ -40,3 +40,15 @@ targets:
         LSUIElement: true
         NSHumanReadableCopyright: ""
         NSPrincipalClass: NSApplication
+
+  OnkyoVolumeTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - OnkyoVolumeTests
+    dependencies:
+      - target: OnkyoVolume
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.swack-tools.onkyo-volume-tests
+      MACOSX_DEPLOYMENT_TARGET: "13.0"
+      SWIFT_VERSION: "5.9"
