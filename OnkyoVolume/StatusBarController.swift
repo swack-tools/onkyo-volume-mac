@@ -22,6 +22,7 @@ class StatusBarController: NSObject, NSMenuDelegate {
     private var globalKeyMonitor: Any?
     private var localKeyMonitor: Any?
     private var eventTap: CFMachPort?
+    private var isMuted = false
 
     // MARK: - Initialization
 
@@ -112,6 +113,15 @@ class StatusBarController: NSObject, NSMenuDelegate {
         )
         volumeDownItem.target = self
         menu.addItem(volumeDownItem)
+
+        // Mute Toggle
+        let muteItem = NSMenuItem(
+            title: "Toggle Mute",
+            action: #selector(toggleMuteMenu),
+            keyEquivalent: ""
+        )
+        muteItem.target = self
+        menu.addItem(muteItem)
 
         // Separator
         menu.addItem(NSMenuItem.separator())
@@ -205,9 +215,18 @@ class StatusBarController: NSObject, NSMenuDelegate {
                         let keyFlags = (data & 0x0000FFFF)
                         let keyPressed = ((keyFlags & 0xFF00) >> 8) == 0xA
 
+                        // Debug: Log all media key events
+                        if keyPressed {
+                            print("DEBUG: Media key detected - keyCode: \(keyCode)")
+                        }
+
                         // Only handle key down events
                         if keyPressed {
                             switch keyCode {
+                            case 7: // F10 - Mute
+                                print("✓ F10 (Mute) detected")
+                                controller.handleMute()
+
                             case 1: // F11 - Volume Down
                                 print("✓ F11 (Volume Down) detected")
                                 controller.handleVolumeDown()
@@ -217,6 +236,7 @@ class StatusBarController: NSObject, NSMenuDelegate {
                                 controller.handleVolumeUp()
 
                             default:
+                                print("DEBUG: Unhandled keyCode: \(keyCode)")
                                 break
                             }
                         }
@@ -241,7 +261,7 @@ class StatusBarController: NSObject, NSMenuDelegate {
         CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
         CGEvent.tapEnable(tap: eventTap, enable: true)
 
-        print("✓ Media key monitoring enabled (F11/F12)")
+        print("✓ Media key monitoring enabled (F10/F11/F12)")
     }
 
     private func handleVolumeDown() {
@@ -255,6 +275,12 @@ class StatusBarController: NSObject, NSMenuDelegate {
         guard let ip = settingsManager.getReceiverIP() else { return }
         Task {
             try? await onkyoClient.volumeUp(to: ip)
+        }
+    }
+
+    private func handleMute() {
+        Task {
+            await toggleMute()
         }
     }
 
@@ -295,6 +321,12 @@ class StatusBarController: NSObject, NSMenuDelegate {
         let newVolume = max(0, Int(slider.doubleValue) - 5)
         slider.doubleValue = Double(newVolume)
         sliderChanged(slider)
+    }
+
+    @objc private func toggleMuteMenu() {
+        Task {
+            await toggleMute()
+        }
     }
 
     @objc private func changeIP() {
@@ -353,6 +385,24 @@ class StatusBarController: NSObject, NSMenuDelegate {
         } catch {
             // Silent failure for setting too - receiver may be busy
             // User can try moving slider again if needed
+        }
+    }
+
+    private func toggleMute() async {
+        guard let ip = settingsManager.getReceiverIP() else {
+            return
+        }
+
+        // Toggle local state
+        isMuted = !isMuted
+
+        do {
+            try await onkyoClient.setMute(isMuted, to: ip)
+            print("✓ Mute: \(isMuted ? "ON" : "OFF")")
+        } catch {
+            // Revert state on failure
+            isMuted = !isMuted
+            print("❌ Failed to toggle mute")
         }
     }
 

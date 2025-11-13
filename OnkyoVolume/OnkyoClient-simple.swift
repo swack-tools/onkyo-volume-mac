@@ -45,6 +45,11 @@ class OnkyoClientSimple {
         _ = try await sendCommand("MVLDOWN", to: host, expectingPrefix: "MVL")
     }
 
+    func setMute(_ muted: Bool, to host: String) async throws {
+        let command = muted ? "AMT01" : "AMT00"
+        _ = try await sendCommand(command, to: host, expectingPrefix: "AMT")
+    }
+
     private func sendCommand(_ command: String, to host: String, expectingPrefix: String) async throws -> String {
         let packet = buildPacket(for: command)
 
