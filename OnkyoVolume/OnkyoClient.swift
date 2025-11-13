@@ -185,7 +185,7 @@ class OnkyoClient {
     }
 
     /// Sends a query command and waits for a response matching the expected prefix
-    /// Reads up to 3 responses to handle receivers that send status updates first
+    /// Reads up to 5 responses to handle receivers that send status updates first
     private func sendQueryCommand(_ command: String, to host: String, expectingPrefix: String = "") async throws -> String {
         // Build the eISCP packet
         let packet = buildPacket(for: command)
@@ -243,10 +243,15 @@ class OnkyoClient {
                                 continuation.resume(throwing: OnkyoClientError.connectionFailed)
                             }
                         } else {
-                            // Command sent, read up to 3 responses
+                            // Command sent, read up to 5 responses
                             Task {
                                 do {
-                                    for i in 1...3 {
+                                    for i in 1...5 {
+                                        // Small delay to let receiver send next response
+                                        if i > 1 {
+                                            try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+                                        }
+
                                         if let response = try await readOneResponse() {
                                             if expectingPrefix.isEmpty || response.contains(expectingPrefix) {
                                                 connection.cancel()
