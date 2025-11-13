@@ -205,6 +205,10 @@ class StatusBarController: NSObject, NSMenuDelegate {
             return
         }
 
+        await MainActor.run {
+            volumeLabel?.stringValue = "Volume: ..."
+        }
+
         do {
             let volume = try await onkyoClient.queryVolume(from: ip)
             await MainActor.run {
@@ -214,9 +218,10 @@ class StatusBarController: NSObject, NSMenuDelegate {
                 isUpdatingSlider = false
             }
         } catch {
-            // Silent failure for volume query
+            // Show error for debugging
             await MainActor.run {
-                volumeLabel?.stringValue = "Volume: --"
+                volumeLabel?.stringValue = "Volume: Error"
+                showError("Volume query failed: \(error.localizedDescription)")
             }
         }
     }

@@ -76,22 +76,32 @@ class OnkyoClient {
     /// - Throws: OnkyoClientError if the query fails
     func queryVolume(from host: String) async throws -> Int {
         let response = try await sendQueryCommand("MVLQSTN", to: host)
+
+        // Debug: Print raw response
+        print("DEBUG: Raw volume response: \(response.debugDescription)")
+        print("DEBUG: Response bytes: \(response.data(using: .utf8)?.map { String(format: "%02X", $0) }.joined(separator: " ") ?? "nil")")
+
         // Response format: "!1MVL{hex}\r\n" or "MVL{hex}"
         let cleaned = response.replacingOccurrences(of: "!1", with: "")
             .replacingOccurrences(of: "\r", with: "")
             .replacingOccurrences(of: "\n", with: "")
             .trimmingCharacters(in: .whitespaces)
 
+        print("DEBUG: Cleaned response: \(cleaned)")
+
         // Extract hex value after "MVL"
         if cleaned.hasPrefix("MVL") {
             let hexString = String(cleaned.dropFirst(3))
+            print("DEBUG: Hex string: \(hexString)")
             if let hexValue = Int(hexString, radix: 16) {
+                print("DEBUG: Parsed volume: \(hexValue)")
                 // Onkyo receivers typically use 0x00-0x64 (0-100 decimal)
                 // Some models use 0x00-0x50 (0-80 decimal)
                 // We'll map to 0-100 range
                 return min(hexValue, 100)
             }
         }
+        print("DEBUG: Failed to parse volume response")
         throw OnkyoClientError.invalidResponse
     }
 
