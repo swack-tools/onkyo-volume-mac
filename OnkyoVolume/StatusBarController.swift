@@ -201,6 +201,7 @@ class StatusBarController: NSObject, NSMenuDelegate {
                 }
                 return // Success!
             } catch {
+                print("Volume query attempt \(attempt) failed: \(error)")
                 if attempt == 1 {
                     // First attempt failed, try once more
                     try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s delay
