@@ -41,7 +41,6 @@ package-dmg VERSION: build-release
     @mkdir -p ./dist
     create-dmg \
         --volname "Onkyo Volume" \
-        --volicon "./OnkyoVolume/Assets.xcassets/AppIcon.appiconset/icon_512x512@2x.png" \
         --window-pos 200 120 \
         --window-size 600 400 \
         --icon-size 100 \
