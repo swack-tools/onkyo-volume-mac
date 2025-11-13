@@ -3,11 +3,11 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 jobs:
   build-and-release:
-    runs-on: macos-15
+    runs-on: warp-macos-14-arm64-6x
     permissions:
       contents: write
 
