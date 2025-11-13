@@ -27,6 +27,22 @@ enum OnkyoClientError: Error, LocalizedError {
     }
 }
 
+/// Thread-safe wrapper for tracking continuation state
+private final class ResumedState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _resumed = false
+
+    func checkAndSet() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if _resumed {
+            return true
+        }
+        _resumed = true
+        return false
+    }
+}
+
 /// Client for communicating with Onkyo receivers via eISCP protocol
 class OnkyoClient {
 
@@ -69,58 +85,37 @@ class OnkyoClient {
 
         // Set up state monitoring
         return try await withCheckedThrowingContinuation { continuation in
-            let lock = NSLock()
-            var resumed = false
+            let state = ResumedState()
 
-            connection.stateUpdateHandler = { state in
-                switch state {
+            connection.stateUpdateHandler = { connectionState in
+                switch connectionState {
                 case .ready:
                     // Connection established, send the packet
                     connection.send(content: packet, completion: .contentProcessed { error in
                         if error != nil {
-                            lock.lock()
-                            if !resumed {
-                                resumed = true
-                                lock.unlock()
+                            if !state.checkAndSet() {
                                 continuation.resume(throwing: OnkyoClientError.connectionFailed)
-                            } else {
-                                lock.unlock()
                             }
                         } else {
                             // Command sent successfully
                             connection.cancel()
-                            lock.lock()
-                            if !resumed {
-                                resumed = true
-                                lock.unlock()
+                            if !state.checkAndSet() {
                                 continuation.resume()
-                            } else {
-                                lock.unlock()
                             }
                         }
                     })
 
                 case .failed(_):
                     connection.cancel()
-                    lock.lock()
-                    if !resumed {
-                        resumed = true
-                        lock.unlock()
+                    if !state.checkAndSet() {
                         continuation.resume(throwing: OnkyoClientError.connectionFailed)
-                    } else {
-                        lock.unlock()
                     }
 
                 case .waiting(_):
                     // Network is unavailable
                     connection.cancel()
-                    lock.lock()
-                    if !resumed {
-                        resumed = true
-                        lock.unlock()
+                    if !state.checkAndSet() {
                         continuation.resume(throwing: OnkyoClientError.connectionFailed)
-                    } else {
-                        lock.unlock()
                     }
 
                 default:
@@ -133,14 +128,9 @@ class OnkyoClient {
 
             // Set up timeout
             DispatchQueue.global().asyncAfter(deadline: .now() + Self.connectionTimeout) {
-                lock.lock()
-                if !resumed {
-                    resumed = true
-                    lock.unlock()
+                if !state.checkAndSet() {
                     connection.cancel()
                     continuation.resume(throwing: OnkyoClientError.timeout)
-                } else {
-                    lock.unlock()
                 }
             }
         }
