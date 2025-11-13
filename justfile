@@ -12,11 +12,12 @@ generate:
 # Run tests
 test: generate
     @echo "Running tests..."
-    xcodebuild test \
+    xcodebuild clean test \
         -scheme OnkyoVolume \
-        -destination 'platform=macOS' \
+        -destination 'platform=macOS,arch=arm64' \
         -derivedDataPath ./build \
         -enableCodeCoverage YES \
+        -only-testing:OnkyoVolumeTests \
         | grep -E '(Test Suite|Test Case|executed|passed|failed)' || true
     @echo "✓ Tests complete"
 
