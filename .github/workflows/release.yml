@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-and-release:
-    runs-on: warp-macos-latest-arm64-6x
+    runs-on: warp-macos-15-arm64-6x
 
     steps:
       - name: Checkout code
