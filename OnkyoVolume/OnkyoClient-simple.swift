@@ -13,14 +13,16 @@ class OnkyoClientSimple {
     func queryVolume(from host: String) async throws -> Int {
         let response = try await sendCommand("MVLQSTN", to: host, expectingPrefix: "MVL")
 
-        // Parse MVL response
+        // Parse MVL response - strip all non-alphanumeric except MVL prefix
         let cleaned = response.replacingOccurrences(of: "!1", with: "")
             .replacingOccurrences(of: "\r", with: "")
             .replacingOccurrences(of: "\n", with: "")
+            .replacingOccurrences(of: "\u{1A}", with: "") // Remove EOF character
             .trimmingCharacters(in: .whitespaces)
 
         if cleaned.hasPrefix("MVL") {
-            let hexString = String(cleaned.dropFirst(3))
+            // Extract just the hex digits after MVL
+            let hexString = String(cleaned.dropFirst(3)).filter { $0.isHexDigit }
             if let hexValue = Int(hexString, radix: 16) {
                 return min(hexValue, 100)
             }
