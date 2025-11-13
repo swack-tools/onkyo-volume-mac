@@ -124,6 +124,9 @@ class OnkyoClient {
         // Build the eISCP packet
         let packet = buildPacket(for: command)
 
+        // Create dedicated queue for this connection
+        let queue = DispatchQueue(label: "com.swack-tools.onkyo-volume.command-\(UUID().uuidString)")
+
         // Create connection
         let connection = NWConnection(
             host: NWEndpoint.Host(host),
@@ -172,10 +175,10 @@ class OnkyoClient {
             }
 
             // Start the connection
-            connection.start(queue: .global())
+            connection.start(queue: queue)
 
             // Set up timeout
-            DispatchQueue.global().asyncAfter(deadline: .now() + Self.connectionTimeout) {
+            queue.asyncAfter(deadline: .now() + Self.connectionTimeout) {
                 if !state.checkAndSet() {
                     connection.cancel()
                     continuation.resume(throwing: OnkyoClientError.timeout)
@@ -189,6 +192,9 @@ class OnkyoClient {
     private func sendQueryCommand(_ command: String, to host: String, expectingPrefix: String = "") async throws -> String {
         // Build the eISCP packet
         let packet = buildPacket(for: command)
+
+        // Create dedicated queue for this connection
+        let queue = DispatchQueue(label: "com.swack-tools.onkyo-volume.query-\(UUID().uuidString)")
 
         // Create connection
         let connection = NWConnection(
@@ -298,10 +304,10 @@ class OnkyoClient {
             }
 
             // Start the connection
-            connection.start(queue: .global())
+            connection.start(queue: queue)
 
             // Set up timeout
-            DispatchQueue.global().asyncAfter(deadline: .now() + Self.connectionTimeout) {
+            queue.asyncAfter(deadline: .now() + Self.connectionTimeout) {
                 if !state.checkAndSet() {
                     connection.cancel()
                     continuation.resume(throwing: OnkyoClientError.timeout)
