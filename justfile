@@ -18,6 +18,8 @@ test: generate
         -derivedDataPath ./build \
         -enableCodeCoverage YES \
         -only-testing:OnkyoVolumeTests \
+        CODE_SIGN_IDENTITY="-" \
+        CODE_SIGN_STYLE=Automatic \
         | grep -E '(Test Suite|Test Case|executed|passed|failed)' || true
     @echo "✓ Tests complete"
 
