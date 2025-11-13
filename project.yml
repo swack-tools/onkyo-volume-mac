@@ -24,14 +24,11 @@ targets:
         COMBINE_HIDPI_IMAGES: YES
         MACOSX_DEPLOYMENT_TARGET: "13.0"
         SWIFT_VERSION: "5.9"
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "Apple Development"
+        DEVELOPMENT_TEAM: LBW5YC4F5G
       configs:
-        Debug:
-          CODE_SIGN_STYLE: Automatic
-          CODE_SIGN_IDENTITY: "Apple Development"
-          DEVELOPMENT_TEAM: LBW5YC4F5G
         Release:
-          CODE_SIGN_STYLE: Automatic
-          CODE_SIGN_IDENTITY: "-"
           ENABLE_HARDENED_RUNTIME: YES
     info:
       path: OnkyoVolume/Info.plist
