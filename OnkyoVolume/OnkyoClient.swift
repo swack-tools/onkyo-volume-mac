@@ -69,6 +69,7 @@ class OnkyoClient {
 
         // Set up state monitoring
         return try await withCheckedThrowingContinuation { continuation in
+            let lock = NSLock()
             var resumed = false
 
             connection.stateUpdateHandler = { state in
@@ -76,34 +77,50 @@ class OnkyoClient {
                 case .ready:
                     // Connection established, send the packet
                     connection.send(content: packet, completion: .contentProcessed { error in
-                        if let error = error {
+                        if error != nil {
+                            lock.lock()
                             if !resumed {
                                 resumed = true
+                                lock.unlock()
                                 continuation.resume(throwing: OnkyoClientError.connectionFailed)
+                            } else {
+                                lock.unlock()
                             }
                         } else {
                             // Command sent successfully
                             connection.cancel()
+                            lock.lock()
                             if !resumed {
                                 resumed = true
+                                lock.unlock()
                                 continuation.resume()
+                            } else {
+                                lock.unlock()
                             }
                         }
                     })
 
-                case .failed(let error):
+                case .failed(_):
                     connection.cancel()
+                    lock.lock()
                     if !resumed {
                         resumed = true
+                        lock.unlock()
                         continuation.resume(throwing: OnkyoClientError.connectionFailed)
+                    } else {
+                        lock.unlock()
                     }
 
-                case .waiting(let error):
+                case .waiting(_):
                     // Network is unavailable
                     connection.cancel()
+                    lock.lock()
                     if !resumed {
                         resumed = true
+                        lock.unlock()
                         continuation.resume(throwing: OnkyoClientError.connectionFailed)
+                    } else {
+                        lock.unlock()
                     }
 
                 default:
@@ -116,10 +133,14 @@ class OnkyoClient {
 
             // Set up timeout
             DispatchQueue.global().asyncAfter(deadline: .now() + Self.connectionTimeout) {
+                lock.lock()
                 if !resumed {
                     resumed = true
+                    lock.unlock()
                     connection.cancel()
                     continuation.resume(throwing: OnkyoClientError.timeout)
+                } else {
+                    lock.unlock()
                 }
             }
         }
