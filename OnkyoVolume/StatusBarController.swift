@@ -19,6 +19,7 @@ class StatusBarController: NSObject, NSMenuDelegate {
     private var volumeLabel: NSTextField?
     private var isUpdatingSlider = false
     private var globalKeyMonitor: Any?
+    private var localKeyMonitor: Any?
 
     // MARK: - Initialization
 
@@ -37,6 +38,9 @@ class StatusBarController: NSObject, NSMenuDelegate {
 
     deinit {
         if let monitor = globalKeyMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        if let monitor = localKeyMonitor {
             NSEvent.removeMonitor(monitor)
         }
     }
@@ -131,23 +135,29 @@ class StatusBarController: NSObject, NSMenuDelegate {
     }
 
     private func setupGlobalKeyMonitor() {
-        // Monitor F11 (volume down) and F12 (volume up) globally
-        // Key codes: F11 = 103, F12 = 111
-        globalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+        // Handler for volume key presses
+        let handleVolumeKey: (NSEvent) -> Void = { [weak self] event in
             guard let self = self,
                   let ip = self.settingsManager.getReceiverIP() else {
                 return
+            }
+
+            // Debug: Print all F-key presses to help identify correct codes
+            if event.keyCode >= 96 && event.keyCode <= 111 {
+                print("DEBUG: F-key pressed with code: \(event.keyCode)")
             }
 
             // F11 = volume down (key code 103)
             // F12 = volume up (key code 111)
             switch event.keyCode {
             case 103: // F11 - Volume Down
+                print("DEBUG: F11 detected - sending volume down")
                 Task {
                     try? await self.onkyoClient.volumeDown(to: ip)
                 }
 
             case 111: // F12 - Volume Up
+                print("DEBUG: F12 detected - sending volume up")
                 Task {
                     try? await self.onkyoClient.volumeUp(to: ip)
                 }
@@ -155,6 +165,17 @@ class StatusBarController: NSObject, NSMenuDelegate {
             default:
                 break
             }
+        }
+
+        // Global monitor (for when other apps are focused)
+        globalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { event in
+            handleVolumeKey(event)
+        }
+
+        // Local monitor (for when this app is focused)
+        localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            handleVolumeKey(event)
+            return event // Pass event through
         }
     }
 
