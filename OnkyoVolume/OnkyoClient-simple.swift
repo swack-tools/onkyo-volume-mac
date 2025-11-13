@@ -13,7 +13,8 @@ class OnkyoClientSimple {
     func queryVolume(from host: String) async throws -> Int {
         let response = try await sendCommand("MVLQSTN", to: host, expectingPrefix: "MVL")
 
-        // Parse MVL response - strip all non-alphanumeric except MVL prefix
+        // Parse MVL response - format is "!1MVL{hex}\u{1A}\r\n"
+        // where {hex} is a 2-digit hex value (e.g., "29" = 0x29 = 41 decimal)
         let cleaned = response.replacingOccurrences(of: "!1", with: "")
             .replacingOccurrences(of: "\r", with: "")
             .replacingOccurrences(of: "\n", with: "")
@@ -21,10 +22,11 @@ class OnkyoClientSimple {
             .trimmingCharacters(in: .whitespaces)
 
         if cleaned.hasPrefix("MVL") {
-            // Extract just the hex digits after MVL
+            // Extract just the hex digits after MVL (e.g., "MVL29" -> "29")
             let hexString = String(cleaned.dropFirst(3)).filter { $0.isHexDigit }
             if let hexValue = Int(hexString, radix: 16) {
-                return min(hexValue, 100)
+                // Return hex value as-is (maps 1:1 to receiver display)
+                return hexValue
             }
         }
         throw NSError(domain: "OnkyoClient", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response"])
