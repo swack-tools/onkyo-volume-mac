@@ -7,18 +7,13 @@ on:
 
 jobs:
   build-and-release:
-    runs-on: macOS
+    runs-on: warp-macos-13-arm64
     permissions:
       contents: write
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Setup Xcode
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: latest-stable
 
       - name: Extract version from tag
         id: version
