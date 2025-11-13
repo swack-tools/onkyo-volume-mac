@@ -1,0 +1,66 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-release:
+    runs-on: warp-macos-latest-arm64-6x
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Install dependencies
+        run: |
+          brew install xcodegen just create-dmg
+
+      - name: Build and package
+        run: |
+          just release v${{ steps.version.outputs.version }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ steps.version.outputs.tag }}
+          draft: false
+          prerelease: false
+          files: |
+            dist/OnkyoVolume-v${{ steps.version.outputs.version }}.dmg
+          body: |
+            ## Onkyo Volume Control v${{ steps.version.outputs.version }}
+
+            ### Installation
+
+            1. Download the DMG file below
+            2. Open the DMG
+            3. Drag OnkyoVolume.app to the Applications folder
+            4. On first launch, grant Accessibility permissions for F11/F12 shortcuts
+
+            ### What's New
+
+            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details.
+
+            ### Requirements
+
+            - macOS 13.0 or later
+            - Onkyo/Integra receiver with eISCP network support
+
+            ### Note
+
+            This app is not code-signed. On first launch:
+            1. Right-click the app and select "Open"
+            2. Click "Open" in the security dialog
+            3. Grant Accessibility permissions when prompted
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
