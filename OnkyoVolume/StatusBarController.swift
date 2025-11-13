@@ -201,6 +201,8 @@ class StatusBarController: NSObject, NSMenuDelegate {
     }
 
     private func queryAndUpdateVolume() async {
+        print("DEBUG: queryAndUpdateVolume() called")
+
         guard let ip = settingsManager.getReceiverIP() else {
             return
         }
@@ -210,7 +212,9 @@ class StatusBarController: NSObject, NSMenuDelegate {
         }
 
         do {
+            print("DEBUG: Starting volume query...")
             let volume = try await onkyoClient.queryVolume(from: ip)
+            print("DEBUG: Got volume: \(volume)")
             await MainActor.run {
                 isUpdatingSlider = true
                 volumeSlider?.doubleValue = Double(volume)

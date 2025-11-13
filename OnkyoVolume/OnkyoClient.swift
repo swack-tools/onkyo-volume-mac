@@ -245,25 +245,32 @@ class OnkyoClient {
                         } else {
                             // Command sent, read up to 5 responses
                             Task {
+                                print("DEBUG: Starting response loop, looking for '\(expectingPrefix)'")
                                 do {
                                     for i in 1...5 {
+                                        print("DEBUG: Loop iteration #\(i)")
                                         // Small delay to let receiver send next response
                                         if i > 1 {
+                                            print("DEBUG: Waiting 0.1s before next read...")
                                             try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
                                         }
 
+                                        print("DEBUG: Calling readOneResponse()...")
                                         if let response = try await readOneResponse() {
+                                            print("DEBUG: Got response in iteration #\(i)")
                                             if expectingPrefix.isEmpty || response.contains(expectingPrefix) {
+                                                print("DEBUG: Response matches! Returning.")
                                                 connection.cancel()
                                                 if !state.checkAndSet() {
                                                     continuation.resume(returning: response)
                                                 }
                                                 return
                                             } else {
-                                                print("DEBUG: Response #\(i) doesn't match, reading next...")
+                                                print("DEBUG: Response #\(i) doesn't match '\(expectingPrefix)', continuing loop...")
                                             }
                                         }
                                     }
+                                    print("DEBUG: Completed all \(5) iterations without finding match")
                                     // No matching response found
                                     connection.cancel()
                                     if !state.checkAndSet() {
