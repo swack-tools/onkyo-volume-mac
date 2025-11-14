@@ -27,17 +27,26 @@ A native macOS menu bar application for controlling Onkyo/Integra receiver volum
 
 ## Installation
 
+### From Release (Recommended)
+
+1. Download the latest DMG from the [Releases](https://github.com/swack-tools/onkyo-volume-mac/releases) page
+2. Open the DMG file
+3. Drag OnkyoVolume.app to your Applications folder
+4. Double-click to launch
+
+**Note**: The app is **signed and notarized** by Apple (Developer: SWACKTECH, LLC), so it will run without security warnings.
+
 ### From Source
 
 1. Clone the repository:
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/swack-tools/onkyo-volume-mac.git
    cd onkyo-volume-mac
    ```
 
-2. Install XcodeGen (if not already installed):
+2. Install dependencies:
    ```bash
-   brew install xcodegen
+   brew install xcodegen just
    ```
 
 3. Generate the Xcode project:
@@ -214,6 +223,40 @@ OnkyoVolume/
 project.yml                      # XcodeGen project definition
 justfile                         # Build automation commands
 test-eiscp.swift                 # CLI testing tool
+.github/workflows/release.yml    # CI/CD for automated releases
+```
+
+### Build Automation
+
+The project uses [just](https://github.com/casey/just) for build automation. Available commands:
+
+```bash
+# Show all available commands
+just
+
+# Generate Xcode project from project.yml
+just generate
+
+# Run tests
+just test
+
+# Build debug configuration
+just build-debug
+
+# Build release configuration
+just build-release
+
+# Create DMG package (builds first)
+just package-dmg v1.0.16
+
+# Complete release pipeline (build + package)
+just release v1.0.16
+
+# Clean build artifacts
+just clean
+
+# Clean everything including Xcode project
+just clean-all
 ```
 
 ### Building with XcodeGen
@@ -222,8 +265,43 @@ The project uses [XcodeGen](https://github.com/yonaskolb/XcodeGen) to generate t
 
 After modifying `project.yml`:
 ```bash
+just generate
+# or
 xcodegen generate
 ```
+
+### Creating a Release
+
+Releases are automated via GitHub Actions when a version tag is pushed:
+
+1. Update version in `project.yml`:
+   ```yaml
+   settings:
+     MARKETING_VERSION: 1.0.X
+   ```
+
+2. Regenerate project and commit:
+   ```bash
+   just generate
+   git add project.yml
+   git commit -m "Bump version to 1.0.X"
+   ```
+
+3. Create and push tag:
+   ```bash
+   git tag v1.0.X
+   git push origin main
+   git push origin v1.0.X
+   ```
+
+4. GitHub Actions will automatically:
+   - Run tests
+   - Build and sign the app
+   - Notarize with Apple
+   - Create DMG using `hdiutil`
+   - Create GitHub release with DMG attached
+
+The workflow runs on Warp's `warp-macos-15-arm64-6x` runner for fast, reliable builds.
 
 ### Testing eISCP Commands
 
@@ -234,6 +312,30 @@ swift test-eiscp.swift <receiver-ip>
 ```
 
 This will test volume up, volume query, and setting absolute volume commands.
+
+### Code Signing and Notarization
+
+For distribution, the app is signed and notarized:
+
+**Development builds** use automatic code signing:
+- Debug configuration: `CODE_SIGN_STYLE: Automatic`
+- Builds locally without notarization
+
+**Release builds** require manual code signing:
+- Sign with "Developer ID Application" certificate
+- Enable Hardened Runtime
+- Code signing flags: `--timestamp`
+- Notarize with Apple using `notarytool`
+
+Required GitHub Secrets for automated releases:
+- `BUILD_CERTIFICATE_BASE64`: Base64-encoded .p12 certificate
+- `P12_PASSWORD`: Certificate password
+- `KEYCHAIN_PASSWORD`: Temporary keychain password
+- `NOTARIZATION_APPLE_ID`: Apple ID for notarization
+- `NOTARIZATION_PASSWORD`: App-specific password
+- `NOTARIZATION_TEAM_ID`: Developer team ID
+
+The GitHub Actions workflow handles certificate import, code signing, notarization, and stapling automatically.
 
 ### Manual Testing Checklist
 
@@ -294,6 +396,14 @@ The app uses the modern `SMAppService` API (macOS 13+) for launch-at-login funct
 ### Recursive Response Handling
 
 The receiver may send multiple responses to a single query (e.g., album art data before volume data). The client uses a recursive callback pattern to read responses until finding one with the expected prefix (e.g., "MVL" for volume queries).
+
+### DMG Creation
+
+The build system uses `hdiutil` (native macOS tool) instead of GUI-based tools for reliable DMG creation on headless CI/CD runners:
+- Creates temporary folder with app and Applications symlink
+- Uses `hdiutil create` with UDZO compression
+- Works reliably on GitHub Actions without Finder/AppleScript dependencies
+- Generated DMG includes Applications folder shortcut for easy drag-and-drop installation
 
 ## License
 
