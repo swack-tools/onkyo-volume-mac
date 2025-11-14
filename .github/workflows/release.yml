@@ -25,7 +25,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          brew install xcodegen just create-dmg
+          brew install xcodegen just
 
       - name: Import signing certificate
         env:

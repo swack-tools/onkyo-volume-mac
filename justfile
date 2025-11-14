@@ -45,16 +45,14 @@ build-release: generate
 package-dmg VERSION: build-release
     @echo "Creating DMG for version {{VERSION}}..."
     @mkdir -p ./dist
-    create-dmg \
-        --volname "Onkyo Volume" \
-        --window-pos 200 120 \
-        --window-size 600 400 \
-        --icon-size 100 \
-        --icon "OnkyoVolume.app" 175 120 \
-        --hide-extension "OnkyoVolume.app" \
-        --app-drop-link 425 120 \
-        "./dist/OnkyoVolume-{{VERSION}}.dmg" \
-        "./build/Build/Products/Release/OnkyoVolume.app"
+    @mkdir -p ./dist/dmg_temp
+    @cp -R "./build/Build/Products/Release/OnkyoVolume.app" "./dist/dmg_temp/"
+    @ln -sf /Applications "./dist/dmg_temp/Applications"
+    hdiutil create -volname "Onkyo Volume" \
+        -srcfolder "./dist/dmg_temp" \
+        -ov -format UDZO \
+        "./dist/OnkyoVolume-{{VERSION}}.dmg"
+    @rm -rf ./dist/dmg_temp
     @echo "✓ DMG created: ./dist/OnkyoVolume-{{VERSION}}.dmg"
 
 # Complete release pipeline
