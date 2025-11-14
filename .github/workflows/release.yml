@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-and-release:
-    runs-on: warp-macos-13-arm64-6x
+    runs-on: warp-macos-15-arm64-6x
     permissions:
       contents: write
 
